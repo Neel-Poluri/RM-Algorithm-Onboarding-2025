@@ -28,6 +28,7 @@
 #define ARMOR_Y_DIFF_LIMIT 1.5
 #define ARMOR_HEIGHT_RATIO_LIMIT 1.5
 #define ARMOR_ASPECT_RATIO_LIMIT 2.5
+#define MIN_CONTOUR_AREA 100.0
 
 // Define the Red HSV color range for segmentation 
 cv::Scalar lowerHSV(0, 120, 70);   // Lower bound of HSV
@@ -35,7 +36,7 @@ cv::Scalar upperHSV(10, 255, 255); // Upper bound of HSV
 cv::Scalar lowerHSV2(170, 120, 70);   // Lower bound of HSV
 cv::Scalar upperHSV2(179, 255, 255); // Upper bound of HSV
 
-class ArmorDetectorNode : /* TODO: Can you find the ROS node base class? We want our class to inherit from it. */ {
+class ArmorDetectorNode : public rclcpp::Node {
     public:
         ArmorDetectorNode();
     private:

@@ -19,12 +19,12 @@ ArmorDetectorNode::ArmorDetectorNode() : Node("armor_detector_node"), frame_coun
     // Subscribe to the camera publisher topic
     image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
         "camera_publisher_node", rclcpp::SensorDataQoS(),
-        std::bind(&image_callback, this, std::placeholders::_1));
+        std::bind(&ArmorDetectorNode::image_callback, this, std::placeholders::_1));
 
     RCLCPP_INFO(this->get_logger(), "ArmorDetectorNode subscribed to topic");
 }
 
-/*
+/*5
  *  This is an image callback method. It fetches messages (which are images in this case) from the topic this node
  *  subscribes to. The method will also run your armor detection algorithm on the image and show the result.
  *
@@ -107,10 +107,10 @@ std::vector<cv::RotatedRect> ArmorDetectorNode::search(cv::Mat& frame, cv::Scala
 
     // 1) Image Preprocessing
     cv::Mat hsv;
-    cv::cvtColor(frame, hsv, cv.COLOR_BGR2HSV)
+    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
     cv::Size kernel_size(10, 10);
     cv::Mat blur_frame;
-    cv::blur(hsv, blur_frame, kernel_size)
+    cv::blur(hsv, blur_frame, kernel_size);
 
     // 2) Color segmentation
     cv::Mat mask1;
@@ -118,19 +118,19 @@ std::vector<cv::RotatedRect> ArmorDetectorNode::search(cv::Mat& frame, cv::Scala
     cv::inRange(blur_frame, mask1, lowerHSV, upperHSV);
     cv::inRange(blur_frame, mask2, lowerHSV2, upperHSV2);
     cv::Mat color;
-    cv::bitwise_or(mask1, mask1, color)
+    cv::bitwise_or(mask1, mask1, color);
     // 2.5) Edge Detection
     cv::Mat edges;
     cv::Canny(color, edges, 100, 200);
     // 3) Contour Detection
-    vector<vector<Point>> contours;
-    vector<Vec4i> hierarchy;
-    cv::findContours(edges, contours, hierarchy, cv2::RETR_TREE, cv2::CHAIN_APPROX_SIMPLE);
+    std::vector<std::vector<cv::Point> > contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(edges, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
     // 4) Contour Filtering
-    vector<cv::RotatedRect> rects;
+    std::vector<cv::RotatedRect> rects;
     for (int i = 0; i < contours.size(); i++)
     {
-        double area = cv:contourArea(contour);
+        double area = cv::contourArea(contours[i]);
         if (area < MIN_CONTOUR_AREA)
         {
             continue;
@@ -142,16 +142,17 @@ std::vector<cv::RotatedRect> ArmorDetectorNode::search(cv::Mat& frame, cv::Scala
         }
     }
 
-    for (int i = 0; i < rects.length; i++)
+    for (int i = 0; i < rects.size(); i++)
     {
-        left_rect = rects[i];
-        for (int j = i; j  < rects.length; j++)
+        cv::RotatedRect left_rect = rects[i];
+        for (int j = i; j  < rects.size(); j++)
         {
-            right_rect = rects[j];
+            cv::RotatedRect right_rect = rects[j];
             if (is_armor(left_rect, right_rect)) {
                 draw_rotated_rect(frame, left_rect);
                 draw_rotated_rect(frame, right_rect);
-                return {left_rect, right_rect};
+                std::vector<cv::RotatedRect> armor_plate= {left_rect, right_rect};
+                return armor_plate;
             }
         }
     }
@@ -219,14 +220,14 @@ bool ArmorDetectorNode::is_armor(cv::RotatedRect &left_rect, cv::RotatedRect &ri
 
     // Verify that the light bars are roughly parallel by checking that their difference does not exceed the threshold
     // Again, you will want to compare against both the limit and its supplement
-    angle_diff = left_rect.angle - right_rect.angle;
+    float angle_diff = left_rect.angle - right_rect.angle;
     if (angle_diff < -ARMOR_ANGLE_DIFF_LIMIT || angle_diff > ARMOR_ANGLE_DIFF_LIMIT)
     {
         return false;
     }
     // Verify that the ratio between the light bar aspect ratios (that's a mouthful) is within the threshold
     // You will want to compare both left / right and right / left against the threshold
-    ratio_ratio = (left_rect.size.height / left_rect.size.width) / (right_rect.size.height / right_rect.size.width);
+    float ratio_ratio = (left_rect.size.height / left_rect.size.width) / (right_rect.size.height / right_rect.size.width);
     if (ratio_ratio > ARMOR_LIGHT_BAR_ASPECT_RATIO_RATIO_LIMIT && (1 / ratio_ratio) > ARMOR_LIGHT_BAR_ASPECT_RATIO_RATIO_LIMIT)
     {
         return false;
@@ -234,14 +235,14 @@ bool ArmorDetectorNode::is_armor(cv::RotatedRect &left_rect, cv::RotatedRect &ri
     // Verify that the light bars are at roughly the same elevation (as in their y difference is within the threshold)
     // The way the constant was determined assumes that you normalize this difference using the average light bar height
     // What that means is that the expression you should be checking is abs(y_left - y_right) / avg_height
-    avg_height = (left_rect.size.height + right_rect.size.height) / 2;
-    if (abs(left_rect.point.y - right_rect.point.y) / avg_height > ARMOR_Y_DIFF_LIMIT) 
+    float avg_height = (left_rect.size.height + right_rect.size.height) / 2;
+    if (abs(left_rect.center.y - right_rect.center.y) / avg_height > ARMOR_Y_DIFF_LIMIT) 
     {
         return false;
     }
     // Verify that the ratio between light bar heights is within the threshold
     // Again, you will want to compare both left / right and right / left
-    height_ratio = left_rect.size.height / right_rect.size.height;
+    float height_ratio = left_rect.size.height / right_rect.size.height;
     if (height_ratio > ARMOR_HEIGHT_RATIO_LIMIT && (1 / height_ratio) > ARMOR_HEIGHT_RATIO_LIMIT)
     {
         return false;
@@ -249,12 +250,13 @@ bool ArmorDetectorNode::is_armor(cv::RotatedRect &left_rect, cv::RotatedRect &ri
     // Verify that the armor aspect ratio is within the threshold
     // For some goofy reason, the constant for this step requires that you calculate aspect ratio as width / height
     // There are multiple ways to define armor plate "height" and "width." Hopefully your idea is effective!
-    avg_width = (left_rect.size.width + right_rect.size.width) / 2;
-    width = abs(right_rect.point.x - left_rect.point.x) + avg_width;
-    armor_aspect_ratio = width / avg_height;
+    float avg_width = (left_rect.size.width + right_rect.size.width) / 2;
+    float width = abs(right_rect.center.x - left_rect.center.x) + avg_width;
+    float armor_aspect_ratio = width / avg_height;
     if (armor_aspect_ratio > ARMOR_ASPECT_RATIO_LIMIT) {
         return false;
     }
+    return true;
 }
 
 /*
